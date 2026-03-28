@@ -7,78 +7,95 @@
         body { font-family: Arial, sans-serif; background: #1a1a2e; color: white; text-align: center; padding: 40px; }
         h1 { color: #00ff88; font-size: 2.5rem; margin-bottom: 10px; }
         p { color: #aaa; margin-bottom: 30px; }
-        .upload-box { background: #16213e; border: 2px dashed #00ff88; border-radius: 15px; padding: 40px; margin: 20px auto; max-width: 500px; cursor: pointer; }
-        .upload-box:hover { background: #0f3460; }
-        input[type="file"] { display: none; }
-        .btn { background: #00ff88; color: #1a1a2e; border: none; padding: 12px 30px; border-radius: 25px; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        .btn { background: #00ff88; color: #1a1a2e; border: none; padding: 12px 30px; border-radius: 25px; font-size: 1rem; font-weight: bold; cursor: pointer; margin: 10px; }
         .btn:hover { background: #00cc6a; }
-        #preview { max-width: 500px; margin: 20px auto; border-radius: 10px; display: none; }
+        .btn.red { background: #ff4444; color: white; }
+        #webcam { border-radius: 15px; border: 3px solid #00ff88; max-width: 500px; display: none; }
+        #canvas { display: none; }
         #result { font-size: 1.5rem; margin: 20px; padding: 15px; border-radius: 10px; display: none; }
         .with-mask { background: #00ff8833; color: #00ff88; }
         .no-mask { background: #ff000033; color: #ff4444; }
-        #output-img { max-width: 500px; margin: 20px auto; border-radius: 10px; display: none; }
+        #snapshot-img { max-width: 500px; margin: 20px auto; border-radius: 10px; display: none; }
     </style>
 </head>
 <body>
     <h1>😷 Face Mask Detector</h1>
-    <p>Upload a photo to detect if a person is wearing a mask</p>
+    <p>Use your webcam to detect if you are wearing a mask</p>
 
-    <div class="upload-box" onclick="document.getElementById('fileInput').click()">
-        <p>📁 Click here to upload an image</p>
-        <p style="font-size:0.8rem; color:#666;">Supports JPG, PNG</p>
-        <input type="file" id="fileInput" accept="image/*" onchange="previewImage(event)">
-    </div>
+    <video id="webcam" autoplay playsinline width="500"></video>
+    <canvas id="canvas"></canvas>
+    <br>
+    <button class="btn" onclick="startWebcam()" id="startBtn">▶ Start Camera</button>
+    <button class="btn red" onclick="stopWebcam()" id="stopBtn" style="display:none">⏹ Stop Camera</button>
+    <button class="btn" onclick="captureAndDetect()" id="captureBtn" style="display:none">📸 Capture & Detect</button>
 
-    <img id="preview" src="" alt="Preview">
-    <button class="btn" onclick="detectMask()" id="detectBtn" style="display:none">🔍 Detect Mask</button>
     <div id="result"></div>
-    <img id="output-img" src="" alt="Result">
+    <img id="snapshot-img" src="" alt="Result">
 
     <script>
-        function previewImage(event) {
-            const preview = document.getElementById('preview');
-            preview.src = URL.createObjectURL(event.target.files[0]);
-            preview.style.display = 'block';
-            document.getElementById('detectBtn').style.display = 'inline-block';
-            document.getElementById('result').style.display = 'none';
-            document.getElementById('output-img').style.display = 'none';
+        let stream = null;
+
+        async function startWebcam() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const webcam = document.getElementById('webcam');
+                webcam.srcObject = stream;
+                webcam.style.display = 'block';
+                document.getElementById('startBtn').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'inline-block';
+                document.getElementById('captureBtn').style.display = 'inline-block';
+            } catch (err) {
+                alert('Could not access webcam: ' + err.message);
+            }
         }
 
-        async function detectMask() {
-            const file = document.getElementById('fileInput').files[0];
-            if (!file) return;
-
-            const formData = new FormData();
-            formData.append('image', file);
-
-            document.getElementById('result').style.display = 'block';
-            document.getElementById('result').className = '';
-            document.getElementById('result').innerText = '⏳ Detecting...';
-
-            const response = await fetch('/predict', { method: 'POST', body: formData });
-            const data = await response.json();
-
-            const resultDiv = document.getElementById('result');
-            resultDiv.style.display = 'block';
-
-            if (data.result === 'No face detected') {
-                resultDiv.innerText = '⚠️ No face detected in image';
-                resultDiv.className = 'no-mask';
-            } else if (data.result === 'With Mask') {
-                resultDiv.innerText = `✅ Wearing Mask (${data.confidence})`;
-                resultDiv.className = 'with-mask';
-            } else {
-                resultDiv.innerText = `❌ No Mask (${data.confidence})`;
-                resultDiv.className = 'no-mask';
+        function stopWebcam() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
             }
+            document.getElementById('webcam').style.display = 'none';
+            document.getElementById('startBtn').style.display = 'inline-block';
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('captureBtn').style.display = 'none';
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('snapshot-img').style.display = 'none';
+        }
 
-            const outputImg = document.getElementById('output-img');
-            outputImg.src = 'data:image/jpeg;base64,' + data.image;
-            outputImg.style.display = 'block';
-            document.getElementById('preview').style.display = 'none';
+        async function captureAndDetect() {
+            const webcam = document.getElementById('webcam');
+            const canvas = document.getElementById('canvas');
+            canvas.width = webcam.videoWidth;
+            canvas.height = webcam.videoHeight;
+            canvas.getContext('2d').drawImage(webcam, 0, 0);
+
+            canvas.toBlob(async (blob) => {
+                const formData = new FormData();
+                formData.append('image', blob, 'snapshot.jpg');
+                document.getElementById('result').style.display = 'block';
+                document.getElementById('result').innerText = '⏳ Detecting...';
+                document.getElementById('result').className = '';
+
+                const response = await fetch('/predict', { method: 'POST', body: formData });
+                const data = await response.json();
+                const resultDiv = document.getElementById('result');
+
+                if (data.result === 'No face detected') {
+                    resultDiv.innerText = '⚠️ No face detected';
+                    resultDiv.className = 'no-mask';
+                } else if (data.result === 'With Mask') {
+                    resultDiv.innerText = `✅ Wearing Mask (${data.confidence})`;
+                    resultDiv.className = 'with-mask';
+                } else {
+                    resultDiv.innerText = `❌ No Mask Detected (${data.confidence})`;
+                    resultDiv.className = 'no-mask';
+                }
+
+                const snapshotImg = document.getElementById('snapshot-img');
+                snapshotImg.src = 'data:image/jpeg;base64,' + data.image;
+                snapshotImg.style.display = 'block';
+            }, 'image/jpeg');
         }
     </script>
 </body>
 </html>
-```
-
